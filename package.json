@@ -1,0 +1,14 @@
+{
+  "name": "target-size-tester",
+  "version": "1.0.0",
+  "description": "Bookmarklet for testing WCAG 2.2 SC 2.5.8 and SC 2.5.5.",
+  "author": "Will Slone",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "terser": "^5.0.0"
+  }
+}
