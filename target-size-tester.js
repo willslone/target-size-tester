@@ -991,7 +991,7 @@
         <tr>
           <th scope="col">Element</th>
           <th scope="col">Accessible name</th>
-          <th scope="col" class="sc258-nowrap">Status</th>
+          <th scope="col" class="sc258-nowrap">Conformance</th>
           <th scope="col" class="sc258-nowrap">Size (px)</th>
           <th scope="col" class="sc258-center">XPath</th>
         </tr>
