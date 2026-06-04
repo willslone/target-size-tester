@@ -1,14 +1,14 @@
 /**
  * Target Size Tester
- * Version: 50
+ * Version: 51
  *
  * Tests WCAG 2.2 SC 2.5.8 (Target Size Minimum, AA, 24px)
  * and SC 2.5.5 (Target Size Enhanced, AAA, 44px).
  *
  * Usage: build this file into a bookmarklet using `npm run build`,
- * then drag the resulting link from dist/bookmarklet.html to your
- * bookmarks bar. Run on any page to overlay interactive targets
- * color-coded by conformance status. Run again to remove all overlays.
+ * then drag the resulting link from index.html to your bookmarks bar.
+ * Run on any page to overlay interactive targets color-coded by
+ * conformance status. Run again to remove all overlays.
  *
  * Keyboard shortcuts (active while overlays are present):
  *   Alt+T  — toggle legend panel visibility
@@ -27,14 +27,15 @@
   // Spacing radius for SC 2.5.8: half of the 24px minimum diameter.
   const SPACING_RADIUS = 12;
 
-  // Element ID prefixes — all injected elements use sc258- to reduce host-page conflicts.
-  const ID_WRAP   = 'sc258-tester';
-  const ID_LEGEND = 'sc258-legend';
-  const ID_TIP    = 'sc258-tip';
-  const ID_DIALOG = 'sc258-dialog';
-  const ID_STYLE  = 'sc258-style';
-  const ID_CURSOR = 'sc258-cursor';
-  const ID_TAB    = 'sc258-tab';
+  // Element IDs — all prefixed sc258- to reduce host-page conflicts.
+  const ID_WRAP   = 'sc258-tester';   // overlay container (regular document)
+  const ID_HOST   = 'sc258-host';     // shadow host element (regular document)
+  const ID_LEGEND = 'sc258-legend';   // legend panel     (shadow root)
+  const ID_TIP    = 'sc258-tip';      // tooltip          (shadow root)
+  const ID_DIALOG = 'sc258-dialog';   // results dialog   (shadow root)
+  const ID_STYLE  = 'sc258-style';    // injected styles  (shadow root)
+  const ID_CURSOR = 'sc258-cursor';   // cursor override  (document.head)
+  const ID_TAB    = 'sc258-tab';      // collapsed tab    (shadow root)
 
   // Selector covering all interactive element types the bookmarklet evaluates.
   const SEL = [
@@ -44,18 +45,17 @@
     '[tabindex="0"]',
   ].join(',');
 
-  // Selector for the bookmarklet's own injected containers — used to exclude
-  // them from target detection so the bookmarklet does not flag its own UI.
-  const OWN_CONTAINERS = `#${ID_WRAP},#${ID_LEGEND},#${ID_DIALOG},#${ID_TIP},#${ID_TAB}`;
+  // Shadow DOM elements are invisible to document.querySelectorAll, so only
+  // the overlay wrap needs excluding from target detection on rerun.
+  const OWN_CONTAINERS = `#${ID_WRAP}`;
 
   // ─── Teardown on second run ───────────────────────────────────────────────────
 
   const existing = document.getElementById(ID_WRAP);
   if (existing) {
-    [ID_LEGEND, ID_TIP, ID_DIALOG, ID_STYLE, ID_CURSOR, ID_TAB].forEach(id => {
-      document.getElementById(id)?.remove();
-    });
-    existing.remove();
+    document.getElementById(ID_HOST)?.remove();    // removes shadow root and all UI inside it
+    document.getElementById(ID_CURSOR)?.remove();  // cursor override in document.head
+    existing.remove();                             // overlay container
     if (existing._kh)  document.removeEventListener('keydown',   existing._kh);
     if (existing._rh)  document.removeEventListener('keydown',   existing._rh);
     if (existing._mh)  document.removeEventListener('mousemove', existing._mh);
@@ -64,274 +64,235 @@
     return;
   }
 
+  // ─── Shadow root setup ────────────────────────────────────────────────────────
+
+  // All bookmarklet UI (legend, dialog, tooltip, tab, styles) lives inside a
+  // shadow root. Host-page styles cannot cross the shadow boundary, so no
+  // !important overrides are needed in the injected stylesheet.
+  const shadowHost = document.createElement('div');
+  shadowHost.id = ID_HOST;
+  document.body.appendChild(shadowHost);
+  const shadowRoot = shadowHost.attachShadow({ mode: 'open' });
+
   // ─── Injected styles ──────────────────────────────────────────────────────────
 
   const sty = document.createElement('style');
   sty.id = ID_STYLE;
   sty.textContent = `
-    /* Universal reset — prevents host-page styles from leaking into the bookmarklet UI.
-       Per-element rules below use higher specificity to restore what is needed. */
-    #sc258-legend *, #sc258-dialog * {
-      box-sizing: border-box !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: none !important;
-      border-radius: 0 !important;
-      background: transparent !important;
-      background-image: none !important;
-      box-shadow: none !important;
-      color: inherit !important;
-      font-family: inherit !important;
-      font-size: inherit !important;
-      font-weight: inherit !important;
-      font-style: normal !important;
-      line-height: inherit !important;
-      letter-spacing: normal !important;
-      word-spacing: normal !important;
-      text-align: left !important;
-      text-transform: none !important;
-      text-decoration: none !important;
-      text-indent: 0 !important;
-      text-shadow: none !important;
-      white-space: normal !important;
-      vertical-align: baseline !important;
-      list-style: none !important;
-      float: none !important;
-      clear: none !important;
-      overflow: visible !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-      cursor: inherit !important;
-      transition: none !important;
-      animation: none !important;
-      transform: none !important;
-      outline: none !important;
-      position: static !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      min-width: 0 !important;
+    /* Reset — normalises UA defaults within the shadow root.
+       No !important needed: host-page styles cannot reach in. */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      background-image: none;
+      box-shadow: none;
+      color: inherit;
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      font-style: normal;
+      line-height: inherit;
+      letter-spacing: normal;
+      word-spacing: normal;
+      text-align: left;
+      text-transform: none;
+      text-decoration: none;
+      text-indent: 0;
+      text-shadow: none;
+      white-space: normal;
+      vertical-align: baseline;
+      list-style: none;
+      float: none;
+      clear: none;
+      overflow: visible;
+      opacity: 1;
+      visibility: visible;
+      cursor: inherit;
+      transition: none;
+      animation: none;
+      transform: none;
+      outline: none;
     }
 
-    /* Suppress pseudo-element content from host-page styles */
-    #sc258-legend *::before, #sc258-legend *::after,
-    #sc258-dialog *::before, #sc258-dialog *::after {
-      content: none !important;
-      display: none !important;
+    *::before, *::after {
+      content: none;
+      display: none;
     }
 
-    /* Protect the bookmarklet's own container elements from host-page
-       position, min-height, and structural overrides. The injected style
-       block is appended after host-page styles, so these !important rules
-       win at equal specificity. */
-    #sc258-legend {
-      position: fixed !important;
-      min-height: 0 !important;
-      max-height: calc(100vh - 32px) !important;
-    }
-    #sc258-dialog {
-      position: fixed !important;
-      min-height: 0 !important;
-    }
-    #sc258-tip {
-      position: fixed !important;
-      min-height: 0 !important;
-    }
-    #sc258-tester {
-      position: absolute !important;
-      min-height: 0 !important;
-    }
-    #sc258-tab {
-      position: fixed !important;
-      min-height: 0 !important;
+    /* ── Base elements ── */
+
+    b { font-weight: bold; }
+    span { display: inline; }
+
+    #sc258-leg-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
     }
 
-    /* Dialog backdrop */
+    fieldset { display: block; margin-bottom: 10px; }
+    legend   { display: block; font-weight: bold; margin-bottom: 4px; }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      cursor: pointer;
+    }
+
+    #sc258-cur-lbl { margin-bottom: 8px; }
+
+    input[type="radio"],
+    input[type="checkbox"] {
+      display: inline-block;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    ul { display: block; margin-bottom: 10px; }
+    li { display: block; }
+
+    /* Abbreviation key — hidden by default, shown when labels checkbox is checked */
+    #sc258-key {
+      display: none;
+      padding-left: 22px;
+      font-size: 11px;
+      line-height: 1.8;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+    #sc258-key.sc258-key-vis { display: block; }
+
+    /* Spacing exception list item — hidden in SC 2.5.5 mode */
+    #sc258-li-sp.sc258-hidden { display: none; }
+
+    /* Collapse button */
+    #sc258-col-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #eee;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    /* View results button */
+    #sc258-view {
+      display: block;
+      width: 100%;
+      color: #eee;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 6px 0;
+      text-align: center;
+      border: 1px solid #666;
+      border-radius: 4px;
+    }
+
+    /* ── Dialog elements ── */
+
     #sc258-dialog::backdrop { background: rgba(0, 0, 0, .65); }
 
-    /* Scrollbar styling for the legend panel */
+    #sc258-dlg-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    #sc258-dlg-title {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1;
+      color: #eee;
+    }
+
+    #sc258-dlg-x {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      color: #eee;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    table {
+      display: table;
+      border-collapse: collapse;
+      border-spacing: 0;
+      width: 100%;
+    }
+    thead { display: table-header-group; }
+    tbody { display: table-row-group; }
+    tr    { display: table-row; background: transparent; }
+    th, td {
+      display: table-cell;
+      border: 1px solid #444;
+      padding: 4px 8px;
+      vertical-align: top;
+    }
+    th { font-weight: bold; }
+
+    /* ── Utility classes ── */
+
+    .sc258-copy-xpath {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      color: #aaa;
+      cursor: pointer;
+    }
+    .sc258-copied { color: #00d400; }
+
+    .sc258-dot-s  { color: #00d400; }
+    .sc258-dot-sp { color: #f0a000; }
+    .sc258-dot-f  { color: #e83030; }
+    .sc258-dot-e  { color: #8888ee; }
+
+    .sc258-note { color: #a0a0a0; font-size: 10px; line-height: 1.4; }
+    .sc258-na   { color: #777; }
+    .sc258-nowrap { white-space: nowrap; }
+    .sc258-center { text-align: center; }
+
+    .sc258-sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ── Scrollbar for legend panel ── */
     #sc258-legend { scrollbar-width: thin; scrollbar-color: #555 #222; }
     #sc258-legend::-webkit-scrollbar { width: 5px; }
     #sc258-legend::-webkit-scrollbar-track { background: #222; }
     #sc258-legend::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
 
-    /* ── Legend elements ── */
-
-    #sc258-legend b, #sc258-dialog b { font-weight: bold !important; }
-    #sc258-legend span, #sc258-dialog span { display: inline !important; }
-
-    #sc258-leg-hdr {
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: center !important;
-      margin-bottom: 8px !important;
-    }
-
-    #sc258-legend fieldset { display: block !important; margin-bottom: 10px !important; }
-    #sc258-legend legend   { display: block !important; font-weight: bold !important; margin-bottom: 4px !important; }
-
-    #sc258-legend label {
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      min-height: 24px !important;
-      cursor: pointer !important;
-    }
-
-    /* Extra margin before the View results button */
-    #sc258-cur-lbl { margin-bottom: 8px !important; }
-
-    #sc258-legend input[type="radio"],
-    #sc258-legend input[type="checkbox"] {
-      display: inline-block !important;
-      flex-shrink: 0 !important;
-      cursor: pointer !important;
-      position: static !important;
-    }
-
-    #sc258-legend ul { display: block !important; margin-bottom: 10px !important; }
-    #sc258-legend li { display: block !important; }
-
-    /* Abbreviation key — hidden by default, shown when labels checkbox is checked */
-    #sc258-legend ul#sc258-key {
-      display: none !important;
-      padding-left: 22px !important;
-      font-size: 11px !important;
-      line-height: 1.8 !important;
-      color: #aaa !important;
-      margin-bottom: 6px !important;
-    }
-    #sc258-legend ul#sc258-key.sc258-key-vis { display: block !important; }
-
-    /* Spacing exception list item — hidden in SC 2.5.5 mode */
-    #sc258-li-sp.sc258-hidden { display: none !important; }
-
-    /* Collapse button */
-    #sc258-col-btn {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      color: #eee !important;
-      font-size: 20px !important;
-      line-height: 1 !important;
-      cursor: pointer !important;
-      width: 24px !important;
-      height: 24px !important;
-      flex-shrink: 0 !important;
-    }
-
-    /* View results button */
-    #sc258-view {
-      display: block !important;
-      width: 100% !important;
-      color: #eee !important;
-      font-size: 13px !important;
-      line-height: 1 !important;
-      cursor: pointer !important;
-      padding: 6px 0 !important;
-      text-align: center !important;
-      border: 1px solid #666 !important;
-      border-radius: 4px !important;
-    }
-
-    /* ── Dialog elements ── */
-
-    #sc258-dlg-hdr {
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: center !important;
-      margin-bottom: 12px !important;
-    }
-
-    #sc258-dlg-title {
-      display: block !important;
-      margin: 0 !important;
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      line-height: 1 !important;
-      color: #eee !important;
-    }
-
-    #sc258-dlg-x {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      width: 28px !important;
-      height: 28px !important;
-      color: #eee !important;
-      cursor: pointer !important;
-      flex-shrink: 0 !important;
-    }
-
-    #sc258-dialog table {
-      display: table !important;
-      border-collapse: collapse !important;
-      border-spacing: 0 !important;
-      width: 100% !important;
-    }
-    #sc258-dialog thead { display: table-header-group !important; }
-    #sc258-dialog tbody { display: table-row-group !important; }
-    #sc258-dialog tr    { display: table-row !important; background: transparent !important; }
-    #sc258-dialog th,
-    #sc258-dialog td    {
-      display: table-cell !important;
-      border: 1px solid #444 !important;
-      padding: 4px 8px !important;
-      vertical-align: top !important;
-    }
-    #sc258-dialog th    { font-weight: bold !important; }
-
-    /* ── Utility classes ── */
-
-    /* XPath copy button */
-    #sc258-dialog .sc258-copy-xpath {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      width: 24px !important;
-      height: 24px !important;
-      color: #aaa !important;
-      cursor: pointer !important;
-    }
-    /* Checkmark state after successful copy */
-    #sc258-dialog .sc258-copied { color: #00d400 !important; }
-
-    /* Status swatch colors */
-    #sc258-legend .sc258-dot-s,  #sc258-dialog .sc258-dot-s  { color: #00d400 !important; }
-    #sc258-legend .sc258-dot-sp, #sc258-dialog .sc258-dot-sp { color: #f0a000 !important; }
-    #sc258-legend .sc258-dot-f,  #sc258-dialog .sc258-dot-f  { color: #e83030 !important; }
-    #sc258-legend .sc258-dot-e,  #sc258-dialog .sc258-dot-e  { color: #8888ee !important; }
-
-    /* Secondary note text in dialog rows */
-    #sc258-dialog .sc258-note { color: #a0a0a0 !important; font-size: 10px !important; line-height: 1.4 !important; }
-
-    /* Missing accessible name indicator */
-    #sc258-dialog .sc258-na { color: #777 !important; }
-
-    /* Table cell utility classes */
-    #sc258-dialog .sc258-nowrap { white-space: nowrap !important; }
-    #sc258-dialog .sc258-center { text-align: center !important; }
-
-    /* Visually hidden but available to screen readers */
-    #sc258-dialog .sc258-sr-only {
-      position: absolute !important;
-      width: 1px !important;
-      height: 1px !important;
-      padding: 0 !important;
-      margin: -1px !important;
-      overflow: hidden !important;
-      clip: rect(0, 0, 0, 0) !important;
-      white-space: nowrap !important;
-      border: 0 !important;
-    }
-
-    /* Focus indicator — overrides the outline:none in the universal reset */
-    #sc258-legend *:focus,
-    #sc258-dialog *:focus {
-      outline: 3px solid #eee !important;
-      outline-offset: 2px !important;
-    }
+    /* ── Focus indicator ── */
+    *:focus { outline: 3px solid #eee; outline-offset: 2px; }
+    *:focus:not(:focus-visible) { outline: none; }
   `;
-  document.head.appendChild(sty);
+  shadowRoot.appendChild(sty);
 
   // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -358,18 +319,15 @@
 
   // ─── SVG icons ────────────────────────────────────────────────────────────────
 
-  // Two-page clipboard icon for the XPath copy button.
   const clipSVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="4" width="9" height="11" rx="1"/>
     <rect x="6" y="1" width="9" height="11" rx="1" fill="#111"/>
   </svg>`;
 
-  // Checkmark shown briefly after a successful copy.
   const checkSVG = `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
     <polyline points="1,7 5,11 13,3"/>
   </svg>`;
 
-  // × icon for the dialog close button.
   const closeSVG = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
     <line x1="2" y1="2" x2="14" y2="14"/>
     <line x1="14" y1="2" x2="2" y2="14"/>
@@ -377,10 +335,6 @@
 
   // ─── Detection helpers ────────────────────────────────────────────────────────
 
-  /**
-   * Returns true if a checkbox or radio input is visually hidden —
-   * off-screen, clipped, or smaller than 4×4px.
-   */
   function isHiddenInput(el, rect, style) {
     return rect.width < 4
       || rect.height < 4
@@ -390,11 +344,6 @@
       || (style.clipPath && style.clipPath !== 'none' && style.clipPath !== '');
   }
 
-  /**
-   * Returns the associated label for any checkbox or radio input,
-   * regardless of whether the input is visually hidden or visible.
-   * Checks label[for] first, then .closest('label').
-   */
   function effectiveLbl(el) {
     if (el.tagName !== 'INPUT') return null;
     const type = (el.type || '').toLowerCase();
@@ -403,12 +352,6 @@
     return label || el.closest('label');
   }
 
-  /**
-   * Merges rects from getClientRects() that lie on the same visual line.
-   * Two rects merge when their vertical overlap exceeds 50% of the shorter
-   * rect's height — fixes spurious multi-rect results for inline elements
-   * containing mixed content (e.g. an aria-hidden span + text node).
-   */
   function mergeLineRects(rects) {
     if (rects.length <= 1) return rects;
     const sorted = [...rects].sort((a, b) => a.top - b.top);
@@ -438,12 +381,6 @@
     return out;
   }
 
-  /**
-   * Returns an array of client rects for an element, after merging
-   * same-line fragments and applying replaced-element height correction
-   * for img/svg/canvas/video/picture children that may be taller than
-   * the inline text line.
-   */
   function effectiveRects(el) {
     let lineRects = Array.from(el.getClientRects()).filter(r => r.width > 0 && r.height > 0);
     if (!lineRects.length) {
@@ -466,10 +403,6 @@
     });
   }
 
-  /**
-   * Returns true if the element should be included in the target list.
-   * Hidden checkbox/radio inputs are included when they have an associated label.
-   */
   function vis(el) {
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') return false;
@@ -485,10 +418,6 @@
     return parseFloat(style.opacity || 1) > 0 && rect.width > 0;
   }
 
-  /**
-   * Returns true if an element is inline within a text run —
-   * the heuristic for the SC 2.5.8/2.5.5 inline context exemption.
-   */
   function isInline(el) {
     if (getComputedStyle(el).display !== 'inline') return false;
     let parent = el.parentElement;
@@ -505,37 +434,21 @@
     return false;
   }
 
-  /**
-   * Returns true if a 24px-radius circle centered on (cx, cy) overlaps
-   * the bounding rect of target t.
-   */
   function circleHitsRect(cx, cy, radius, t) {
     const dx = Math.max(t.left - cx, 0, cx - t.right);
     const dy = Math.max(t.top  - cy, 0, cy - t.bottom);
     return Math.sqrt(dx * dx + dy * dy) < radius;
   }
 
-  /**
-   * Returns true if two target center points are within 24px of each other
-   * (i.e. their 24px-diameter spacing circles overlap).
-   */
   function centersWithin24(ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay;
     return Math.sqrt(dx * dx + dy * dy) < 24;
   }
 
-  /** HTML-escapes a string for safe insertion into markup. */
   function esc(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  /**
-   * Resolves the accessible name of an element using this priority:
-   * aria-labelledby → aria-label → label[for] → title →
-   * value (submit/reset/button inputs) → visible text content.
-   * Returns an empty string when no name is found.
-   * Excludes script, style, and noscript text from the textContent fallback.
-   */
   function accName(el) {
     const ids = el.getAttribute('aria-labelledby');
     if (ids) {
@@ -562,11 +475,6 @@
     return tx ? (tx.length > 40 ? tx.slice(0, 40) + '\u2026' : tx) : '';
   }
 
-  /**
-   * Returns a candidate parent element to measure instead of el, when el is a
-   * non-native element (span, div, etc.) with an explicit role or tabindex that
-   * is the sole interactive child of a larger block container.
-   */
   function parentTarget(el) {
     const tag = el.tagName.toLowerCase();
     if (/^(a|button|input|select|textarea|summary)$/.test(tag)) return null;
@@ -597,59 +505,54 @@
     Array.from(document.querySelectorAll(SEL))
       .filter(el => vis(el) && !el.closest(OWN_CONTAINERS))
       .forEach(el => {
-      let viaLabel = false, viaParent = false, rects;
+        let viaLabel = false, viaParent = false, rects;
 
-      const label = effectiveLbl(el);
-      if (label) {
-        viaLabel = true;
-        if (el.closest('label') === label) {
-          // Input wrapped by label — label rect covers both.
-          rects = effectiveRects(label);
-        } else {
-          const er = el.getBoundingClientRect();
-          const style = getComputedStyle(el);
-          if (isHiddenInput(el, er, style)) {
-            // Off-screen or clipped input — use the label rect only,
-            // to avoid the hidden input inflating the union to off-screen coordinates.
+        const label = effectiveLbl(el);
+        if (label) {
+          viaLabel = true;
+          if (el.closest('label') === label) {
             rects = effectiveRects(label);
           } else {
-            // Visible input with separate label — use the union bounding box.
-            const inputRects = effectiveRects(el);
-            const labelRects = effectiveRects(label);
-            const all = [...inputRects, ...labelRects].filter(r => r.width > 0 && r.height > 0);
-            if (all.length) {
-              const ul = Math.min(...all.map(r => r.left));
-              const ut = Math.min(...all.map(r => r.top));
-              const ur = Math.max(...all.map(r => r.right));
-              const ub = Math.max(...all.map(r => r.bottom));
-              rects = [{ left: ul, top: ut, right: ur, bottom: ub, width: ur - ul, height: ub - ut }];
-            } else {
+            const er = el.getBoundingClientRect();
+            const style = getComputedStyle(el);
+            if (isHiddenInput(el, er, style)) {
               rects = effectiveRects(label);
+            } else {
+              const inputRects = effectiveRects(el);
+              const labelRects = effectiveRects(label);
+              const all = [...inputRects, ...labelRects].filter(r => r.width > 0 && r.height > 0);
+              if (all.length) {
+                const ul = Math.min(...all.map(r => r.left));
+                const ut = Math.min(...all.map(r => r.top));
+                const ur = Math.max(...all.map(r => r.right));
+                const ub = Math.max(...all.map(r => r.bottom));
+                rects = [{ left: ul, top: ut, right: ur, bottom: ub, width: ur - ul, height: ub - ut }];
+              } else {
+                rects = effectiveRects(label);
+              }
             }
           }
+        } else {
+          const pt = parentTarget(el);
+          if (pt) { viaParent = true; rects = effectiveRects(pt); }
+          else     { rects = effectiveRects(el); }
         }
-      } else {
-        const pt = parentTarget(el);
-        if (pt) { viaParent = true; rects = effectiveRects(pt); }
-        else     { rects = effectiveRects(el); }
-      }
 
-      rects.forEach((r, idx) => {
-        tgts.push({
-          el, viaLabel, viaParent,
-          fragIdx: idx, fragTotal: rects.length,
-          left:   r.left   + scrollX,
-          top:    r.top    + scrollY,
-          right:  r.right  + scrollX,
-          bottom: r.bottom + scrollY,
-          w: r.width, h: r.height,
-          cx: r.left + r.width  / 2 + scrollX,
-          cy: r.top  + r.height / 2 + scrollY,
+        rects.forEach((r, idx) => {
+          tgts.push({
+            el, viaLabel, viaParent,
+            fragIdx: idx, fragTotal: rects.length,
+            left:   r.left   + scrollX,
+            top:    r.top    + scrollY,
+            right:  r.right  + scrollX,
+            bottom: r.bottom + scrollY,
+            w: r.width, h: r.height,
+            cx: r.left + r.width  / 2 + scrollX,
+            cy: r.top  + r.height / 2 + scrollY,
+          });
         });
       });
-    });
 
-    // Deduplicate by center proximity (within 2px).
     tgts = tgts.filter((t, i, a) =>
       !a.slice(0, i).some(u => Math.abs(t.cx - u.cx) < 2 && Math.abs(t.cy - u.cy) < 2)
     );
@@ -676,9 +579,6 @@
         const uAdequate = u => u.w >= thresh && u.h >= thresh;
         const fail = tgts.some((u, j) => {
           if (i === j || t.el === u.el) return false;
-          // Per SC 2.5.8, t's 24px circle must not intersect:
-          // (a) the bounding box of any other target (adequately sized or not), AND
-          // (b) the 24px circle of any other undersized target.
           return uAdequate(u)
             ? circleHitsRect(t.cx, t.cy, SPACING_RADIUS, u)
             : circleHitsRect(t.cx, t.cy, SPACING_RADIUS, u) || centersWithin24(t.cx, t.cy, u.cx, u.cy);
@@ -727,7 +627,7 @@
     'box-shadow:0 4px 15px rgba(0,0,0,0.5)', 'border-radius:6px',
     'pointer-events:none', 'z-index:2147483647', 'white-space:nowrap',
   ].join(';');
-  document.body.appendChild(tip);
+  shadowRoot.appendChild(tip);
 
   function placeTip(vx, vy) {
     tip.style.display = 'block';
@@ -767,7 +667,6 @@
     tgts.forEach(t => {
       const c = CLR[t.s];
 
-      // Bounding box overlay
       const box = document.createElement('div');
       box.className = 'sc258-box';
       box.style.cssText = [
@@ -776,7 +675,6 @@
         `background:${c.b}`, `outline:2px solid ${c.d}`, 'outline-offset:-1px',
       ].join(';');
 
-      // Box-view label (abbreviation in top-left corner)
       const boxLbl = document.createElement('span');
       boxLbl.className = 'sc258-lbl';
       boxLbl.setAttribute('aria-hidden', 'true');
@@ -786,7 +684,6 @@
       t.boxEl = box; t.lblEl = boxLbl;
       wrap.appendChild(box);
 
-      // Spacing ring (SC 2.5.8 only, shown for fail and spacing-exception targets)
       let ring = null;
       if (t.s === 'f' || t.s === 'sp') {
         ring = document.createElement('div');
@@ -800,7 +697,6 @@
       }
       t.ringEl = ring;
 
-      // Minimum-circle overlay (shown when circle view is active)
       const circle = document.createElement('div');
       circle.className = 'sc258-circle24';
       circle.style.cssText = [
@@ -811,7 +707,6 @@
       t.c24El = circle;
       wrap.appendChild(circle);
 
-      // Circle-view label (appears to the left of the circle, vertically centered)
       const circLbl = document.createElement('span');
       circLbl.className = 'sc258-circ-lbl';
       circLbl.setAttribute('aria-hidden', 'true');
@@ -893,10 +788,10 @@
       const tp   = (tag === 'input' && t.el.type) ? t.el.type.toLowerCase() : '';
 
       let info;
-      if (role)                               info = `${tag}[role=${role}]`;
+      if (role)                                          info = `${tag}[role=${role}]`;
       else if (tag === 'a' && t.el.hasAttribute('href')) info = 'a[href]';
-      else if (tp)                            info = `${tag}[type=${tp}]`;
-      else                                    info = tag;
+      else if (tp)                                       info = `${tag}[type=${tp}]`;
+      else                                               info = tag;
 
       const rawName      = accName(t.el);
       const nameIsAbsent = rawName === '';
@@ -904,12 +799,12 @@
         ? `<span aria-hidden="true" class="sc258-na">&#8212;</span><span class="sc258-sr-only">missing name</span>`
         : esc(rawName);
 
-      const fragNote  = t.fragTotal > 1
+      const fragNote = t.fragTotal > 1
         ? `<br><span class="sc258-note">fragment ${t.fragIdx + 1} of ${t.fragTotal}</span>`
         : '';
-      const elemNote  = t.viaLabel  ? '<br><span class="sc258-note">input + label</span>'
-                      : t.viaParent ? '<br><span class="sc258-note">size from parent</span>'
-                      : '';
+      const elemNote = t.viaLabel  ? '<br><span class="sc258-note">input + label</span>'
+                     : t.viaParent ? '<br><span class="sc258-note">size from parent</span>'
+                     : '';
 
       const xp = generateXPath(t.el);
       const xpSafe = xp.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
@@ -1000,7 +895,7 @@
       }
     }
     if (hideChk?.checked) wrap.style.display = 'none';
-    if (document.getElementById('sc258-cur-chk')?.checked) applyCursor();
+    if (shadowRoot.getElementById('sc258-cur-chk')?.checked) applyCursor();
   }
 
   // ─── Initial run ──────────────────────────────────────────────────────────────
@@ -1018,7 +913,7 @@
     'position:fixed', 'inset:0', 'margin:auto',
     'background:#111', 'color:#eee',
     'border:1px solid #444', 'box-shadow:0 4px 15px rgba(0,0,0,0.5)', 'border-radius:8px',
-    'padding:16px 20px', `font-size:13px`, `line-height:1.6`, `font-family:${FONT}`,
+    'padding:16px 20px', 'font-size:13px', 'line-height:1.6', `font-family:${FONT}`,
     'max-width:min(960px,92vw)', 'max-height:80vh', 'overflow-y:auto',
     'width:fit-content', 'height:fit-content',
   ].join(';');
@@ -1040,11 +935,11 @@
       <tbody id="sc258-dlg-body"></tbody>
     </table>
   `;
-  document.body.appendChild(dlg);
-  dialogTbody = document.getElementById('sc258-dlg-body');
+  shadowRoot.appendChild(dlg);
+  dialogTbody = shadowRoot.getElementById('sc258-dlg-body');
   rebuildDialog();
 
-  const dlgX = document.getElementById('sc258-dlg-x');
+  const dlgX = shadowRoot.getElementById('sc258-dlg-x');
   let viewBtn;
 
   const closeDialog = () => { dlg.close(); viewBtn?.focus(); };
@@ -1055,19 +950,19 @@
     const focusable = Array.from(dlg.querySelectorAll('button,[href],[tabindex]:not([tabindex="-1"]),input,select,textarea'));
     if (!focusable.length) return;
     const first = focusable[0], last = focusable[focusable.length - 1];
-    if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
-    else            { if (document.activeElement === last)  { e.preventDefault(); first.focus(); } }
+    if (e.shiftKey) { if (shadowRoot.activeElement === first) { e.preventDefault(); last.focus(); } }
+    else            { if (shadowRoot.activeElement === last)  { e.preventDefault(); first.focus(); } }
   });
 
   // ─── Legend panel ─────────────────────────────────────────────────────────────
 
   function updateLegendCounts() {
-    const cs   = document.getElementById('sc258-c-s');
-    const csp  = document.getElementById('sc258-c-sp');
-    const cf   = document.getElementById('sc258-c-f');
-    const ce   = document.getElementById('sc258-c-e');
-    const liSp = document.getElementById('sc258-li-sp');
-    const flbl = document.getElementById('sc258-f-lbl');
+    const cs   = shadowRoot.getElementById('sc258-c-s');
+    const csp  = shadowRoot.getElementById('sc258-c-sp');
+    const cf   = shadowRoot.getElementById('sc258-c-f');
+    const ce   = shadowRoot.getElementById('sc258-c-e');
+    const liSp = shadowRoot.getElementById('sc258-li-sp');
+    const flbl = shadowRoot.getElementById('sc258-f-lbl');
     if (cs)   cs.textContent   = counts.s;
     if (csp)  csp.textContent  = counts.sp;
     if (cf)   cf.textContent   = counts.f;
@@ -1090,7 +985,7 @@
     'box-shadow:0 4px 15px rgba(0,0,0,0.5)', 'padding:0',
   ].join(';');
   tab.textContent = '\u25b4';
-  document.body.appendChild(tab);
+  shadowRoot.appendChild(tab);
 
   function collapseLeg() {
     legState = 'collapsed';
@@ -1102,7 +997,7 @@
     legState = 'expanded';
     leg.style.display = '';
     tab.style.display = 'none';
-    document.getElementById('sc258-col-btn')?.focus();
+    shadowRoot.getElementById('sc258-col-btn')?.focus();
   }
   function hideLeg() {
     prevLegState = legState;
@@ -1119,7 +1014,7 @@
     } else {
       leg.style.display = '';
       tab.style.display = 'none';
-      document.getElementById('sc258-col-btn')?.focus();
+      shadowRoot.getElementById('sc258-col-btn')?.focus();
     }
   }
 
@@ -1128,7 +1023,7 @@
   leg.style.cssText = [
     'position:fixed', 'bottom:16px', 'right:16px',
     'background:#111', 'color:#eee',
-    'padding:12px 14px', `font-size:13px`, `line-height:1.6`, `font-family:${FONT}`,
+    'padding:12px 14px', 'font-size:13px', 'line-height:1.6', `font-family:${FONT}`,
     'z-index:2147483647', 'pointer-events:auto',
     'border:1px solid #444', 'box-shadow:0 4px 15px rgba(0,0,0,0.5)', 'border-radius:8px',
     'min-width:260px', 'max-height:calc(100vh - 32px)', 'overflow-y:auto',
@@ -1182,14 +1077,14 @@
     <button id="sc258-view" aria-label="View Target Size audit results">View results</button>
   `;
 
-  document.body.appendChild(leg);
+  shadowRoot.appendChild(leg);
 
   // ─── Legend event listeners ───────────────────────────────────────────────────
 
-  document.getElementById('sc258-col-btn').addEventListener('click', collapseLeg);
+  shadowRoot.getElementById('sc258-col-btn').addEventListener('click', collapseLeg);
   tab.addEventListener('click', expandLeg);
 
-  document.querySelectorAll('input[name="sc258-mode"]').forEach(radio => {
+  shadowRoot.querySelectorAll('input[name="sc258-mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
       if (!radio.checked) return;
       mode = radio.value;
@@ -1202,8 +1097,8 @@
     });
   });
 
-  chk = document.getElementById('sc258-lbl-chk');
-  key = document.getElementById('sc258-key');
+  chk = shadowRoot.getElementById('sc258-lbl-chk');
+  key = shadowRoot.getElementById('sc258-key');
   chk.addEventListener('change', () => {
     const show = chk.checked;
     key.classList.toggle('sc258-key-vis', show);
@@ -1214,7 +1109,7 @@
     }
   });
 
-  circChk = document.getElementById('sc258-circ-chk');
+  circChk = shadowRoot.getElementById('sc258-circ-chk');
   circChk.addEventListener('change', () => {
     const on = circChk.checked;
     wrap.querySelectorAll('.sc258-box').forEach(b => b.style.display = on ? 'none' : 'block');
@@ -1226,17 +1121,17 @@
     }
   });
 
-  hideChk = document.getElementById('sc258-hide-chk');
+  hideChk = shadowRoot.getElementById('sc258-hide-chk');
   hideChk.addEventListener('change', () => { wrap.style.display = hideChk.checked ? 'none' : ''; });
 
-  const curChk = document.getElementById('sc258-cur-chk');
+  const curChk = shadowRoot.getElementById('sc258-cur-chk');
   curChk.addEventListener('change', () => {
     const existingCursor = document.getElementById(ID_CURSOR);
     if (curChk.checked) { if (!existingCursor) applyCursor(); }
     else                { existingCursor?.remove(); }
   });
 
-  viewBtn = document.getElementById('sc258-view');
+  viewBtn = shadowRoot.getElementById('sc258-view');
   viewBtn.addEventListener('click', () => dlg.showModal());
 
   // ─── Keyboard handlers ────────────────────────────────────────────────────────
