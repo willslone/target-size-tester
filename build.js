@@ -286,7 +286,7 @@ const html = `<!DOCTYPE html>
         <h2>Keyboard Shortcuts</h2>
         <ul>
           <li><kbd>Alt + =</kbd>: Rerun in place and refresh all overlays. Useful after scrolling or when interacting with dynamic content such as dropdown menus.</li>
-          <li><kbd>Alt + t</kbd>: Hide the legend panel. Useful when the panel obscures a target.
+          <li><kbd>Alt + t</kbd>: Hide the legend panel. Useful when the panel obscures a target.</li>
         </ul>
 
         <h2>Source code</h2>

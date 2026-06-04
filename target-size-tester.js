@@ -1,6 +1,6 @@
 /**
  * Target Size Tester
- * Version: 49
+ * Version: 50
  *
  * Tests WCAG 2.2 SC 2.5.8 (Target Size Minimum, AA, 24px)
  * and SC 2.5.5 (Target Size Enhanced, AAA, 44px).
@@ -43,6 +43,10 @@
     '[role="menuitem"]', '[role="tab"]', '[role="switch"]', '[role="option"]',
     '[tabindex="0"]',
   ].join(',');
+
+  // Selector for the bookmarklet's own injected containers — used to exclude
+  // them from target detection so the bookmarklet does not flag its own UI.
+  const OWN_CONTAINERS = `#${ID_WRAP},#${ID_LEGEND},#${ID_DIALOG},#${ID_TIP},#${ID_TAB}`;
 
   // ─── Teardown on second run ───────────────────────────────────────────────────
 
@@ -100,6 +104,10 @@
       animation: none !important;
       transform: none !important;
       outline: none !important;
+      position: static !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      min-width: 0 !important;
     }
 
     /* Suppress pseudo-element content from host-page styles */
@@ -107,6 +115,32 @@
     #sc258-dialog *::before, #sc258-dialog *::after {
       content: none !important;
       display: none !important;
+    }
+
+    /* Protect the bookmarklet's own container elements from host-page
+       position, min-height, and structural overrides. The injected style
+       block is appended after host-page styles, so these !important rules
+       win at equal specificity. */
+    #sc258-legend {
+      position: fixed !important;
+      min-height: 0 !important;
+      max-height: calc(100vh - 32px) !important;
+    }
+    #sc258-dialog {
+      position: fixed !important;
+      min-height: 0 !important;
+    }
+    #sc258-tip {
+      position: fixed !important;
+      min-height: 0 !important;
+    }
+    #sc258-tester {
+      position: absolute !important;
+      min-height: 0 !important;
+    }
+    #sc258-tab {
+      position: fixed !important;
+      min-height: 0 !important;
     }
 
     /* Dialog backdrop */
@@ -149,6 +183,7 @@
       display: inline-block !important;
       flex-shrink: 0 !important;
       cursor: pointer !important;
+      position: static !important;
     }
 
     #sc258-legend ul { display: block !important; margin-bottom: 10px !important; }
@@ -557,7 +592,9 @@
     scrollY = window.scrollY;
     tgts = [];
 
-    Array.from(document.querySelectorAll(SEL)).filter(vis).forEach(el => {
+    Array.from(document.querySelectorAll(SEL))
+      .filter(el => vis(el) && !el.closest(OWN_CONTAINERS))
+      .forEach(el => {
       let viaLabel = false, viaParent = false, rects;
 
       const label = effectiveLbl(el);
@@ -991,7 +1028,7 @@
         <tr>
           <th scope="col">Element</th>
           <th scope="col">Accessible name</th>
-          <th scope="col" class="sc258-nowrap">Conformance</th>
+          <th scope="col" class="sc258-nowrap">Status</th>
           <th scope="col" class="sc258-nowrap">Size (px)</th>
           <th scope="col" class="sc258-center">XPath</th>
         </tr>
