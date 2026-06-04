@@ -56,9 +56,11 @@
       document.getElementById(id)?.remove();
     });
     existing.remove();
-    if (existing._kh) document.removeEventListener('keydown', existing._kh);
-    if (existing._rh) document.removeEventListener('keydown', existing._rh);
-    if (existing._mh) document.removeEventListener('mousemove', existing._mh);
+    if (existing._kh)  document.removeEventListener('keydown',   existing._kh);
+    if (existing._rh)  document.removeEventListener('keydown',   existing._rh);
+    if (existing._mh)  document.removeEventListener('mousemove', existing._mh);
+    if (existing._sh)  window.removeEventListener('scroll',      existing._sh);
+    if (existing._rzh) window.removeEventListener('resize',      existing._rzh);
     return;
   }
 
@@ -976,9 +978,11 @@
     buildTargets();
     classify();
     buildOverlays();
-    wrap._kh = kbHandler;
-    wrap._rh = rerunHandler;
-    wrap._mh = moveHandler;
+    wrap._kh  = kbHandler;
+    wrap._rh  = rerunHandler;
+    wrap._mh  = moveHandler;
+    wrap._sh  = scrollHandler;
+    wrap._rzh = resizeHandler;
     updateOverlays();
     updateLegendCounts();
     rebuildDialog();
@@ -1278,5 +1282,32 @@
   };
   document.addEventListener('mousemove', moveHandler);
   wrap._mh = moveHandler;
+
+  // ─── Scroll and resize handlers ──────────────────────────────────────────────
+
+  // Scroll: rAF throttle — repositions overlays at most once per frame.
+  let rafPending = false;
+  const scrollHandler = () => {
+    if (rafPending || dlg?.open) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      doRerun();
+    });
+  };
+
+  // Resize: debounce — waits until the user stops resizing before rebuilding,
+  // since dimensions and positions can change significantly mid-drag.
+  let resizeTimer = null;
+  const resizeHandler = () => {
+    if (dlg?.open) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(doRerun, 150);
+  };
+
+  window.addEventListener('scroll', scrollHandler, { passive: true });
+  window.addEventListener('resize', resizeHandler);
+  wrap._sh  = scrollHandler;
+  wrap._rzh = resizeHandler;
 
 })();
